@@ -18,6 +18,7 @@ dependencies = [
     "pydantic>=2",
     "typer",
     "rich",
+    "pydicom"
 ]
 
 [project.optional-dependencies]
@@ -30,6 +31,7 @@ dev = [
 
 [project.scripts]
 radconductor = "radconductor.cli:main"
+radconductor = "radconductor.cli:app"
 
 [tool.setuptools.packages.find]
 where = ["src"]
