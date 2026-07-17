@@ -18,7 +18,8 @@ dependencies = [
     "pydantic>=2",
     "typer",
     "rich",
-    "pydicom"
+    "pydicom",
+    "TotalSegmentator"
 ]
 
 [project.optional-dependencies]

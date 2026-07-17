@@ -2,11 +2,15 @@ from pathlib import Path
 
 import typer
 
+from radconductor.tools.conversion.save_nifti import save_nifti
 from radconductor.tools.inspection.discover_dicom_series import (
     discover_dicom_series,
 )
 from radconductor.tools.inspection.inspect_volume import inspect_volume
 from radconductor.tools.loading.load_dicom_series import load_dicom_series
+from radconductor.tools.measurement.measure_mask_volume import measure_mask_volume
+from radconductor.tools.qc.check_mask import check_mask
+from radconductor.tools.segmentation.segment_organs import segment_organs
 from radconductor.tools.viz.show_slice import show_middle_slice
 
 app = typer.Typer()
@@ -49,6 +53,31 @@ def inspect(study_path: str):
         f"Intensity range: "
         f"{metadata.intensity_min} to {metadata.intensity_max}"
     )
+    
+    output_path = save_nifti(
+        image,
+        Path("outputs/scan.nii.gz"),
+    )
+
+    print(f"Saved NIfTI: {output_path}")
+    
+    result = segment_organs(
+        input_path=Path("outputs/scan.nii.gz"),
+        output_directory=Path("outputs/segmentations"),
+        organs=["liver", "spleen"],
+    )
+
+    print(result.masks)
+    
+    for organ, mask_path in result.masks.items():
+        check_mask(
+            mask_path=mask_path,
+            reference_image=image,
+        )
+
+        volume_ml = measure_mask_volume(mask_path)
+
+        print(f"{organ}: {volume_ml:.1f} mL — QC passed")
 
 
 def main():
