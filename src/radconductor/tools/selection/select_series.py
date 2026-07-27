@@ -4,6 +4,13 @@ from radconductor.domain.models import DicomSeriesMetadata
 def select_ct_series(
     series: list[DicomSeriesMetadata],
 ) -> DicomSeriesMetadata:
+    """
+    Select the CT series to be processed.
+
+    Current heuristic:
+    choose the CT series with the largest number of slices.
+    """
+
     ct_series = [
         item
         for item in series
@@ -14,8 +21,9 @@ def select_ct_series(
     if not ct_series:
         raise ValueError("No usable CT series found.")
 
-    print("WARNING - Multiple CT series found - Returning the one with the most number of slices!")
-    return max(
+    selected_series = max(
         ct_series,
         key=lambda item: item.slice_count,
     )
+
+    return selected_series

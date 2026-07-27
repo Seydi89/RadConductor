@@ -1,86 +1,127 @@
+# src/radconductor/cli.py
+
 from pathlib import Path
 
 import typer
 
-from radconductor.tools.conversion.save_nifti import save_nifti
-from radconductor.tools.inspection.discover_dicom_series import (
-    discover_dicom_series,
-)
-from radconductor.tools.inspection.inspect_volume import inspect_volume
-from radconductor.tools.loading.load_dicom_series import load_dicom_series
-from radconductor.tools.measurement.measure_mask_volume import measure_mask_volume
-from radconductor.tools.qc.check_mask import check_mask
-from radconductor.tools.segmentation.segment_organs import segment_organs
-from radconductor.tools.viz.show_slice import show_middle_slice
+from radconductor.pipeline.pipeline import Pipeline
 
-app = typer.Typer()
+app = typer.Typer(
+    help="Local medical-imaging analysis pipeline.",
+)
+
 
 @app.callback()
-def main() -> None:
+def callback() -> None:
     """RadConductor CLI."""
 
+
 @app.command()
-def inspect(study_path: str):
-    """Inspect a DICOM study."""
+def inspect(
+    study_path: Path = typer.Argument(
+        ...,
+        exists=True,
+        file_okay=False,
+        dir_okay=True,
+        readable=True,
+        resolve_path=True,
+        help="Directory containing the DICOM study.",
+    ),
+    output_directory: Path = typer.Option(
+        Path("outputs"),
+        "--output-dir",
+        "-o",
+        help="Directory where pipeline outputs are written.",
+    ),
+    organs: list[str] | None = typer.Option(
+        None,
+        "--organ",
+        help=(
+            "Organ to segment. Repeat this option to request "
+            "multiple organs."
+        ),
+    ),
+) -> None:
+    """Run the RadConductor pipeline on a DICOM study."""
 
-    series = discover_dicom_series(Path(study_path))
+    requested_organs = tuple(organs or ["liver", "spleen"])
 
-    print()
+    pipeline = Pipeline()
 
-    for i, s in enumerate(series, start=1):
-        print(f"Series {i}")
-        print(f"UID: {s.series_instance_uid}")
-        print(f"Modality: {s.modality}")
-        print(f"Slices: {s.slice_count}")
-        print()
-        
-    image = load_dicom_series(series[0])
-    # print(f"Dimension: {image.GetDimension()}")
-    # print(f"Size: {image.GetSize()}")
-    # print(f"Spacing: {image.GetSpacing()}")
-    # print(f"Origin: {image.GetOrigin()}")
-    # print(f"Direction: {image.GetDirection()}")   
-    
-    # show_middle_slice(image)
-    
-    metadata = inspect_volume(image)
+    try:
+        context = pipeline.run(
+            study_path=study_path,
+            output_directory=output_directory,
+            organs=requested_organs,
+        )
+    except Exception as exc:
+        typer.secho(
+            f"Pipeline failed: {exc}",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1) from exc
 
-    print(f"Size: {metadata.size}")
-    print(f"Spacing: {metadata.spacing_mm}")
-    print(f"Physical size: {metadata.physical_size_mm}")
-    print(f"Voxel type: {metadata.voxel_type}")
-    print(
-        f"Intensity range: "
-        f"{metadata.intensity_min} to {metadata.intensity_max}"
+    typer.secho(
+        "Pipeline completed successfully.",
+        fg=typer.colors.GREEN,
     )
-    
-    output_path = save_nifti(
-        image,
-        Path("outputs/scan.nii.gz"),
-    )
 
-    print(f"Saved NIfTI: {output_path}")
-    
-    result = segment_organs(
-        input_path=Path("outputs/scan.nii.gz"),
-        output_directory=Path("outputs/segmentations"),
-        organs=["liver", "spleen"],
-    )
+    typer.echo()
+    typer.echo(f"Study: {context.study_path}")
+    typer.echo(f"Output directory: {context.output_directory}")
 
-    print(result.masks)
-    
-    for organ, mask_path in result.masks.items():
-        check_mask(
-            mask_path=mask_path,
-            reference_image=image,
+    if context.selected_series is not None:
+        typer.echo()
+        typer.echo("Selected DICOM series")
+        typer.echo(
+            f"  UID: {context.selected_series.series_instance_uid}"
+        )
+        typer.echo(
+            f"  Modality: {context.selected_series.modality}"
+        )
+        typer.echo(
+            f"  Slices: {context.selected_series.slice_count}"
         )
 
-        volume_ml = measure_mask_volume(mask_path)
+    if context.volume_metadata is not None:
+        metadata = context.volume_metadata
 
-        print(f"{organ}: {volume_ml:.1f} mL — QC passed")
+        typer.echo()
+        typer.echo("Volume")
+        typer.echo(f"  Size: {metadata.size}")
+        typer.echo(f"  Spacing: {metadata.spacing_mm} mm")
+        typer.echo(
+            f"  Physical size: {metadata.physical_size_mm} mm"
+        )
+        typer.echo(f"  Voxel type: {metadata.voxel_type}")
+        typer.echo(
+            "  Intensity range: "
+            f"{metadata.intensity_min} "
+            f"to {metadata.intensity_max}"
+        )
+
+    if context.nifti_path is not None:
+        typer.echo()
+        typer.echo(f"NIfTI: {context.nifti_path}")
+
+    if context.organ_volumes_ml:
+        typer.echo()
+        typer.echo("Measurements")
+
+        for organ, volume_ml in context.organ_volumes_ml.items():
+            qc_status = (
+                "QC passed"
+                if organ in context.qc_passed_organs
+                else "QC unavailable"
+            )
+
+            typer.echo(
+                f"  {organ}: {volume_ml:.1f} mL — {qc_status}"
+            )
 
 
-def main():
+def main() -> None:
     app()
 
 
