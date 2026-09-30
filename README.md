@@ -1,6 +1,6 @@
 # RadConductor
 
-RadConductor is currently an open-source, local-first medical-imaging pipeline for DICOM processing, organ segmentation, technical QC, quantitative measurement, visualization, and optional research AI analysis. It aims to evolve into a transparent orchestration framework where medical-imaging models, deterministic tools, and LLM agents collaborate in evidence-grounded workflows.
+RadConductor is currently an open-source, local first medical imaging pipeline with deterministic analysis tools and an Merlin model integration. It aims to evolve into a transparent multi-model framework where medical imaging models, tools, and LLM agents work together.
 
 ## Implemented
 
