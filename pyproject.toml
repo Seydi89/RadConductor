@@ -12,14 +12,14 @@ license = { text = "MIT" }
 
 dependencies = [
     "numpy",
+    "matplotlib",
     "nibabel",
     "pydicom",
     "SimpleITK",
     "pydantic>=2",
     "typer",
     "rich",
-    "pydicom",
-    "TotalSegmentator"
+    "TotalSegmentator",
 ]
 
 [project.optional-dependencies]
@@ -30,9 +30,12 @@ dev = [
     "mypy",
 ]
 
+merlin = [
+    "merlin-vlm==0.0.7",
+]
+
 [project.scripts]
 radconductor = "radconductor.cli:main"
-radconductor = "radconductor.cli:app"
 
 [tool.setuptools.packages.find]
 where = ["src"]

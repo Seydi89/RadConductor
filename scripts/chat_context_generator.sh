@@ -16,11 +16,20 @@ cd "$ROOT_DIR"
   find . \
     -path './.git' -prune -o \
     -path './.venv' -prune -o \
+    -path './.vscode' -prune -o \
     -path './data' -prune -o \
     -path './outputs' -prune -o \
+    -path './logs' -prune -o \
     -path './build' -prune -o \
     -path './dist' -prune -o \
-    -path './*.egg-info' -prune -o \
+    -name '__pycache__' -prune -o \
+    -name '*.egg-info' -prune -o \
+    -name '.pytest_cache' -prune -o \
+    -name '.ruff_cache' -prune -o \
+    -name '.mypy_cache' -prune -o \
+    -name '.DS_Store' -prune -o \
+    -name '*.pyc' -prune -o \
+    -name 'CHAT_CONTEXT.md' -prune -o \
     -print |
     sed 's|^\./||' |
     sort

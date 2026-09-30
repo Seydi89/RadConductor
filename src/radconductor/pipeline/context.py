@@ -10,6 +10,7 @@ from pydantic import (
 
 from radconductor.domain.models import (
     DicomSeriesMetadata,
+    MerlinPhenotypeResult,
     SegmentationResult,
     VolumeMetadata,
 )
@@ -39,6 +40,9 @@ class PipelineContext(BaseModel):
 
     qc_passed_organs: set[str] = Field(default_factory=set)
     organ_volumes_ml: dict[str, float] = Field(default_factory=dict)
+    mask_overlay_paths: dict[str, Path] = Field(default_factory=dict)
+    merlin_result: MerlinPhenotypeResult | None = None
+    report_path: Path | None = None
 
     @field_validator("organs")
     @classmethod

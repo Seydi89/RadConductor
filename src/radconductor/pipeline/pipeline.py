@@ -1,6 +1,10 @@
 from pathlib import Path
 
 from radconductor.pipeline.context import PipelineContext
+from radconductor.tools.classification.run_merlin import (
+    DevicePreference,
+    run_merlin_phenotype_classification,
+)
 from radconductor.tools.conversion.save_nifti import save_nifti
 from radconductor.tools.inspection.discover_dicom_series import (
     discover_dicom_series,
@@ -13,16 +17,23 @@ from radconductor.tools.measurement.measure_mask_volume import (
 from radconductor.tools.qc.check_mask import check_mask
 from radconductor.tools.segmentation.segment_organs import segment_organs
 from radconductor.tools.selection.select_series import select_ct_series
+from radconductor.tools.viz.create_mask_overlay import create_mask_overlay
+from radconductor.reporting.html_report import write_html_report
 
 
 class Pipeline:
-    """Run the deterministic RadConductor imaging pipeline."""
+    """Run the RadConductor medical-imaging pipeline."""
 
     def run(
         self,
         study_path: Path,
         output_directory: Path,
         organs: tuple[str, ...] = ("liver", "spleen"),
+        run_merlin: bool = False,
+        merlin_labels_path: Path | None = None,
+        merlin_cache_directory: Path | None = None,
+        merlin_top_k: int = 5,
+        merlin_device: DevicePreference = "auto",
     ) -> PipelineContext:
         context = PipelineContext(
             study_path=study_path,
@@ -38,6 +49,21 @@ class Pipeline:
         self._save_nifti(context)
         self._segment_organs(context)
         self._validate_and_measure_masks(context)
+        self._create_mask_overlays(context)
+
+        if run_merlin:
+            self._run_merlin(
+                context=context,
+                labels_path=merlin_labels_path,
+                cache_directory=merlin_cache_directory,
+                top_k=merlin_top_k,
+                device=merlin_device,
+            )
+        
+        context.report_path = write_html_report(
+            context=context,
+            output_path=context.output_directory / "report.html",
+        )       
 
         return context
 
@@ -51,7 +77,7 @@ class Pipeline:
         )
 
     def _discover_series(
-        self,        
+        self,
         context: PipelineContext,
     ) -> None:
         series = discover_dicom_series(context.study_path)
@@ -64,7 +90,7 @@ class Pipeline:
         context.discovered_series = tuple(series)
 
     def _select_series(
-        self,        
+        self,
         context: PipelineContext,
     ) -> None:
         context.selected_series = select_ct_series(
@@ -72,7 +98,7 @@ class Pipeline:
         )
 
     def _load_volume(
-        self,        
+        self,
         context: PipelineContext,
     ) -> None:
         if context.selected_series is None:
@@ -85,7 +111,7 @@ class Pipeline:
         )
 
     def _inspect_volume(
-        self,        
+        self,
         context: PipelineContext,
     ) -> None:
         if context.image is None:
@@ -98,7 +124,7 @@ class Pipeline:
         )
 
     def _save_nifti(
-        self,        
+        self,
         context: PipelineContext,
     ) -> None:
         if context.image is None:
@@ -117,7 +143,7 @@ class Pipeline:
         )
 
     def _segment_organs(
-        self,        
+        self,
         context: PipelineContext,
     ) -> None:
         if context.nifti_path is None:
@@ -137,7 +163,7 @@ class Pipeline:
         )
 
     def _validate_and_measure_masks(
-        self,        
+        self,
         context: PipelineContext,
     ) -> None:
         if context.image is None:
@@ -168,3 +194,68 @@ class Pipeline:
             context.organ_volumes_ml[organ] = (
                 measure_mask_volume(mask_path)
             )
+            
+    def _create_mask_overlays(
+        self,
+        context: PipelineContext,
+    ) -> None:
+        if context.image is None:
+            raise RuntimeError(
+                "The reference volume is unavailable"
+            )
+
+        if context.segmentation_result is None:
+            raise RuntimeError(
+                "Segmentation must run before creating mask overlays"
+            )
+
+        overlay_directory = context.output_directory / "qc"
+
+        for organ in context.organs:
+            try:
+                mask_path = context.segmentation_result.masks[organ]
+                volume_ml = context.organ_volumes_ml[organ]
+            except KeyError as exc:
+                raise RuntimeError(
+                    f"Validated mask data is missing for organ: {organ}"
+                ) from exc
+
+            context.mask_overlay_paths[organ] = create_mask_overlay(
+                reference_image=context.image,
+                mask_path=mask_path,
+                output_path=overlay_directory / f"{organ}.png",
+                organ_name=organ,
+                volume_ml=volume_ml,
+            )        
+
+    def _run_merlin(
+        self,
+        context: PipelineContext,
+        labels_path: Path | None,
+        cache_directory: Path | None,
+        top_k: int,
+        device: DevicePreference,
+    ) -> None:
+        if context.nifti_path is None:
+            raise RuntimeError(
+                "A NIfTI image must be created before Merlin analysis"
+            )
+
+        if labels_path is None:
+            raise ValueError(
+                "Merlin phenotype labels are required when Merlin is enabled"
+            )
+
+        resolved_cache_directory = (
+            cache_directory
+            if cache_directory is not None
+            else context.output_directory / "merlin_cache"
+        )
+
+        context.merlin_result = run_merlin_phenotype_classification(
+            input_path=context.nifti_path,
+            labels_path=labels_path,
+            cache_directory=resolved_cache_directory,
+            top_k=top_k,
+            device=device,
+        )
